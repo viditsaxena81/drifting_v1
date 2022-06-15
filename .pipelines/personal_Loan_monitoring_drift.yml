@@ -1,0 +1,57 @@
+# Continuous Integration (CI) pipeline that orchestrates the Data Drifiting of the personal_Loan model.
+
+# Runtime parameters to select artifacts
+parameters:
+- name : artifactBuildId
+  displayName: Model Train CI Build ID. Default is 'latest'.
+  type: string
+  default: latest
+
+pr: none
+
+# Trigger this pipeline on model-train pipeline completion
+resources:
+  containers:
+  - container: mlops
+    image: mcr.microsoft.com/mlops/python:latest
+  pipelines:
+  - pipeline: model-train-ci
+    source: Model-Train-Register-CI # Name of the triggering pipeline
+    trigger:
+      branches:
+        include:
+        - master
+
+variables:
+- template: personal_Loan-variables-template.yml
+- group: devopsforai-aml-vg
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: 'Monitoring_Drift_Pipeline_CI'
+  displayName: 'Monitoring Drift Pipeline CI'
+  jobs:
+  - job: "Build_Drifiting_Pipeline"
+    displayName: "Build Drifting Pipeline"
+    container: mlops
+    timeoutInMinutes: 0
+    steps:
+    - task: AzureCLI@1
+      displayName: "Publish Monitoring Drift Pipeline"
+      name: publish_monitordrift
+      inputs:
+        azureSubscription: '$(WORKSPACE_SVC_CONNECTION)'        
+        scriptLocation: inlineScript
+        workingDirectory: $(Build.SourcesDirectory)
+        inlineScript: |
+          set -e # fail on error
+          export SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          # Invoke the Python building and publishing a training pipeline
+          pip install azureml-datadrift
+          python -m personal_Loan.monitoring.drift.py
+      env:
+        SCORING_DATASTORE_ACCESS_KEY: $(SCORING_DATASTORE_ACCESS_KEY)
+
+   
